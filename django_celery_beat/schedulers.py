@@ -213,8 +213,15 @@ class DatabaseScheduler(Scheduler):
                 pass  # not in transaction management.
 
             last, ts = self._last_timestamp, self.Changes.last_change()
-        except DatabaseError as exc:
-            logger.exception('Database gave error: %r', exc)
+        except (DatabaseError, InterfaceError) as exc:
+            logger.error('Database gave error: %r', exc)
+
+            try:
+                logger.debug("Trying to close old connection...")
+                close_old_connections()
+            except Exception as dex:
+                logger.exception(dex)
+
             return False
         try:
             if ts and ts > (last if last else ts):
@@ -241,8 +248,9 @@ class DatabaseScheduler(Scheduler):
                         name = self._dirty.pop()
                         _tried.add(name)
                         self.schedule[name].save()
-                    except (KeyError, ObjectDoesNotExist):
-                        pass
+                    except (KeyError, ObjectDoesNotExist) as ex:
+                        logger.exception(ex)
+
         except (DatabaseError, InterfaceError) as exc:
             # retry later
             self._dirty |= _tried
